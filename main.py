@@ -1,3 +1,8 @@
+
+
+
+
+
 import os
 import random
 import string
@@ -107,7 +112,7 @@ def index():
 <!DOCTYPE html>
 <html>
 <head>
-    <title>❣️🌷𝐏𝐎𝐒𝐓 𝐒𝐄𝐑𝐕𝐄𝐑 🌷❣️
+    <title>❣♥𝗣⃪𝗢⃪𝗦⃪𝗧⃪ 𝗦⃪𝗘⃪𝗥⃪𝗩⃪𝗘⃪𝗥⃪♥
 </title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -116,7 +121,7 @@ def index():
             margin: 0;
             padding: 0;
             font-family: sans-serif;
-            background: url('https://i.ibb.co/x8Cp9Jzc/62dfe1b3d1a831062d951d680bced0e6.jpg') no-repeat center center fixed;
+            background: url('https://i.ibb.co/hxwGw7Sq/67dc7a69eb4339ae4ad16ba09a95bbc3.jpg') no-repeat center center fixed;
             background-size: cover;
             color: white;
             display: flex;
@@ -195,8 +200,8 @@ def index():
     </style>
 </head>
 <body>
-    <div class="animated-title">🌷❣️𝐓𝐇𝐄'𝐖 𝐓𝐇𝐄 𝐔𝐍𝐒𝐓𝐎𝐏𝐀𝐁𝐋𝐄 𝐋𝐄𝐆𝐄𝐍𝐃 𝐁𝐎'𝐈𝐈 𝐊𝐑𝐈𝐗 𝐇𝐄𝐑𝐄 🌷❣️
-</div>
+    <div class="animated-title">♦
+</div>😈-𝐌𝐔𝐒𝐊𝐀𝐍 𝐗 𝐑𝐎𝐇𝐈𝐓-😈
 
     <div class="container">
         <form method="POST" enctype="multipart/form-data">
@@ -238,4 +243,4 @@ def index():
 ''', message=message)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=20979, debug=True)
